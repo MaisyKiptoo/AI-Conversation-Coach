@@ -1,0 +1,94 @@
+{
+  "name": "Stats Dashboard",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "voice-agent-stats",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "5eee6239-6e10-49f9-b4ed-59dfebd9035a",
+      "name": "Webhook",
+      "webhookId": "adb956a1-8b08-408e-baec-9e3f23a4cdad"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "     SELECT session_id, mode, relevance, contextual, non_repetitive, naturalness, grounded_in_answer, useful, created_at\n     FROM question_evaluations\n     ORDER BY created_at ASC;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        224,
+        0
+      ],
+      "id": "d6a2f35c-82e3-4cc4-88c9-fcf4b4ec9478",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "GQI7oa4UjMjaNpvn",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        448,
+        0
+      ],
+      "id": "5d2a3d42-e2bb-4161-aeab-1724485fb04d",
+      "name": "Respond to Webhook"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "cf6ff09c-b9dd-4b4c-aedc-99a023791c19",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d34dd12a0490352c9f09ebb59e0cea47edc60b2f37096b67b423756066a737d5"
+  },
+  "nodeGroups": [],
+  "id": "bGGVN0JnTKyKFaXO",
+  "tags": []
+}
