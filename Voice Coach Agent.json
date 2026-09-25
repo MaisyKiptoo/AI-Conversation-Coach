@@ -1,0 +1,469 @@
+{
+  "name": "Voice Coach Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "voice-agent",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -864,
+        32
+      ],
+      "id": "745d6d5d-e8ca-4f04-8f3a-2cd1f04eaed9",
+      "name": "Webhook",
+      "webhookId": "4aeebb1d-2522-435b-910c-fa93ee5dfce8"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.message }}",
+        "needsFallback": true,
+        "options": {
+          "systemMessage": "=You are a speaking coach running a live voice practice session. Keep every reply short and speakable (under 70 words) — it gets read aloud by text-to-speech, so never use markdown, bullet points, numbering, or lists.\nTopics already covered in this conversation: {{ $('Get Topics').item.json.topics }}\n\nIf the user's last answer explains something new but leaves a gap related to what's already been covered (a claim without a reason, a tool named without its role, a result without how it was achieved), ask specifically about that gap rather than a generic next question.\n\nMode: {{ $json.mode }}\nTopic/focus: {{ $json.topic }}\n\nBehavior by mode:\n- If mode is \"Job interview\": ask behavioral or technical questions relevant to the topic. When the user's last answer explains WHAT they built but not WHY (the problem it solved) or WHAT ROLE a specific component played, ask about the missing piece specifically — don't just move to a generic next question.\n- If mode is \"Small talk / networking\" or \"General conversation\": ask natural, low-stakes follow-ups. If their last answer was short or vague, gently invite them to expand on it. Only give feedback when it's genuinely useful, not after every single turn.\n- If mode is \"Presentation Q&A\": act like a skeptical audience member probing their explanation.\n\nIf the topics list above says \"Nothing covered yet\" AND the user's message is just a greeting or placeholder like \"(session start)\" with no real content, skip feedback and ask an opening question. If the user's very first message already contains real content (an answer, a description, a claim), respond to it directly — give feedback if relevant and ask a follow-up grounded in what they said, rather than asking a generic opening question.\nFrom the second turn onward: give one short sentence of feedback on how they just communicated (clarity, filler words, completeness, or structure — whichever is most relevant), then ask ONE follow-up question that responds to what they actually said, not a generic next question.\n\nNever repeat a question you've already asked in this conversation."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -352,
+        -64
+      ],
+      "id": "61c3602d-c3a3-4279-900f-5f659a1baf66",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.6-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        -656,
+        208
+      ],
+      "id": "c9d2c4f5-6602-4aef-8038-48e47e42877f",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "ZlWTaiuoOlqaKJLf",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        432,
+        96
+      ],
+      "id": "cfcc78ff-84d3-498b-af76-ee4f6610d604",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "459fa1c6-9746-4eaf-8156-96e7f9283a82",
+              "name": "reply",
+              "value": "={{ $json.output }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        -80,
+        144
+      ],
+      "id": "55b40af8-83d0-49de-921b-409015245aca",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.sessionId }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.4,
+      "position": [
+        -352,
+        256
+      ],
+      "id": "888d34d3-8ce6-4706-98ca-3440b79f34fe",
+      "name": "Postgres Chat Memory",
+      "credentials": {
+        "postgres": {
+          "id": "GQI7oa4UjMjaNpvn",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-20b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        -512,
+        240
+      ],
+      "id": "74646c7f-b22f-43d3-8a20-37d5b10d5288",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "EEOdGk5jyJju55SK",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are scoring a coaching agent's output for quality. Score each dimension from 1-5.\n\nThe user's mode: {{ $json.body.mode }}\nThe user's last answer: {{ $json.body.message }}\nThe coach's generated reply (question + any feedback): {{ $json.reply }}\n\nScore these dimensions, 1 (poor) to 5 (excellent):\n- relevance: does the reply relate to what the mode/topic calls for?\n- contextual: does it build on the user's actual answer, not just a generic question?\n- non_repetitive: (assume 5 unless the reply looks like a stock question)\n- naturalness: does it read like natural spoken conversation, not robotic?\n- grounded_in_answer: is any feedback given actually based on specifics in the user's answer?\n- useful: would this genuinely help the user improve?\n\nRespond with ONLY valid JSON, no other text, in exactly this shape:\n{\"relevance\": 0, \"contextual\": 0, \"non_repetitive\": 0, \"naturalness\": 0, \"grounded_in_answer\": 0, \"useful\": 0, \"reasoning\": \"one sentence explaining the scores\"}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        160,
+        304
+      ],
+      "id": "ff468aa1-a436-4e2d-9600-0b4aa590fb2c",
+      "name": "Evaluator"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-20b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        0,
+        464
+      ],
+      "id": "69f280d9-9dc1-45c8-b08b-b0b8cf270e8d",
+      "name": "Groq Chat Model1",
+      "credentials": {
+        "groqApi": {
+          "id": "EEOdGk5jyJju55SK",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ JSON.parse($json.text) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        560,
+        384
+      ],
+      "id": "6f459181-cd34-4b5f-b6a2-9b4949687354",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COALESCE(\n  (SELECT topics FROM session_topics WHERE session_id = '{{ $json.body.sessionId }}'),\n  'Nothing covered yet — this is the first message of the conversation.'\n) AS topics;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        -688,
+        -96
+      ],
+      "id": "03b5dd6b-6bd3-47fd-a821-01ebedd43a9f",
+      "name": "Get Topics",
+      "credentials": {
+        "postgres": {
+          "id": "GQI7oa4UjMjaNpvn",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"sessionId\": \"{{ $('Webhook').item.json.body.sessionId }}\",\n  \"mode\": \"{{ $('Webhook').item.json.body.mode }}\",\n  \"topic\": \"{{ $('Webhook').item.json.body.topic }}\",\n  \"message\": \"{{ $('Webhook').item.json.body.message }}\",\n  \"topics\": \"{{ $json.topics }}\"\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        -528,
+        -192
+      ],
+      "id": "44e72c1f-31cc-4206-b832-5c807ed54fee",
+      "name": "Combine Fields"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Conversation so far includes this latest exchange:\nPreviously covered topics: {{ $('Combine Fields').item.json.topics }}\nUser just said: {{ $('Webhook').item.json.body.message }}\nCoach replied: {{ $json.reply }}\n\nUpdate the running list of topics covered in this conversation. Keep it short — a plain-text list of specific things discussed (not generic categories), max 5 items, most recent first. If the user's latest message added genuinely new information, include it. If it didn't add anything new, return the list unchanged.\n\nRespond with ONLY the updated topic list as plain text, one item per line, no other commentary.",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        48,
+        -160
+      ],
+      "id": "f1608a39-2ad4-4028-a2c7-0a9f0c6c62f4",
+      "name": "Topic Summarizer"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-20b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        176,
+        0
+      ],
+      "id": "fc7813e4-d699-47be-8d07-b00a8a12df40",
+      "name": "Groq Chat Model2",
+      "credentials": {
+        "groqApi": {
+          "id": "EEOdGk5jyJju55SK",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO session_topics (session_id, topics, updated_at)\nVALUES ('{{ $('Webhook').item.json.body.sessionId }}', '{{ $json.text.replace(/'/g, \"''\") }}', NOW())\nON CONFLICT (session_id)\nDO UPDATE SET topics = EXCLUDED.topics, updated_at = NOW();",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        416,
+        -160
+      ],
+      "id": "acd9784f-b472-410f-83d1-ba5681137c0b",
+      "name": "Save Topics",
+      "credentials": {
+        "postgres": {
+          "id": "GQI7oa4UjMjaNpvn",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO question_evaluations (session_id, mode, user_answer, generated_question, relevance, contextual, non_repetitive, naturalness, grounded_in_answer, useful, reasoning)\nVALUES ('{{ $('Webhook').item.json.body.sessionId }}', '{{ $('Webhook').item.json.body.mode }}', '{{ $('Webhook').item.json.body.message.replace(/'/g, \"''\") }}', '{{ $('Edit Fields').item.json.reply.replace(/'/g, \"''\") }}', {{ $json.relevance }}, {{ $json.contextual }}, {{ $json.non_repetitive }}, {{ $json.naturalness }}, {{ $json.grounded_in_answer }}, {{ $json.useful }}, '{{ $json.reasoning.replace(/'/g, \"''\") }}')",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        736,
+        112
+      ],
+      "id": "a8dcc960-afa8-41b5-bf00-6184dd4b71fc",
+      "name": "question_evaluations",
+      "credentials": {
+        "postgres": {
+          "id": "GQI7oa4UjMjaNpvn",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Get Topics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Evaluator",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Topic Summarizer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Evaluator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluator": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "question_evaluations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Topics": {
+      "main": [
+        [
+          {
+            "node": "Combine Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine Fields": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Topic Summarizer",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Topic Summarizer": {
+      "main": [
+        [
+          {
+            "node": "Save Topics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "42f3f1d2-075d-4ba7-8b78-7ace70eb550f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d34dd12a0490352c9f09ebb59e0cea47edc60b2f37096b67b423756066a737d5"
+  },
+  "nodeGroups": [],
+  "id": "fPdRThvLGBrZ5SWQ",
+  "tags": []
+}
