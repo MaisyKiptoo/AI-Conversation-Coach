@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Voice Coach</title>
+<style>
+  body { font-family: sans-serif; max-width: 600px; margin: 40px auto; }
+  #setup { margin-bottom: 20px; }
+  #setup label { display: block; margin-bottom: 6px; font-size: 14px; }
+  #setup select, #setup input { width: 100%; padding: 8px; margin-bottom: 14px; box-sizing: border-box; }
+  #transcript { border: 1px solid #ccc; padding: 16px; min-height: 200px; margin-bottom: 16px; }
+  .turn { margin-bottom: 10px; }
+  .you { color: #333; }
+  .coach { color: #0a5; }
+  .label { font-weight: bold; font-size: 12px; }
+  #controls { display: flex; gap: 10px; align-items: center; }
+  #status { color: #666; font-size: 13px; margin-top: 6px; }
+</style>
+</head>
+<body>
+  <h1>Voice Coach</h1>
+
+  <div id="setup">
+    <label for="modeSelect">Mode</label>
+    <select id="modeSelect">
+      <option value="Job interview">Job interview</option>
+      <option value="General conversation">General conversation</option>
+      <option value="Small talk / networking">Small talk / networking</option>
+      <option value="Presentation Q&A">Presentation Q&A</option>
+    </select>
+
+    <label for="topicInput">Topic (optional)</label>
+    <input type="text" id="topicInput" placeholder="e.g. backend engineer role, my n8n project">
+  </div>
+
+  <div id="controls">
+    <button id="recordBtn">🎤 Click to talk</button>
+    <button id="newSessionBtn">🔄 New Session</button>
+  </div>
+  <p id="status"></p>
+  <div id="transcript"></div>
+
+  <p><a href="stats.html">📊 View my score history</a></p>
+
+  <script>
+    const webhookUrl = "https://lansalot-n8n.duckdns.org/webhook/voice-agent";
+    const transcribeUrl = "https://lansalot-n8n.duckdns.org/webhook/transcribe-audio";
+
+    let sessionId = localStorage.getItem('voiceCoachSessionId');
+    if (!sessionId) {
+      sessionId = crypto.randomUUID();
+      localStorage.setItem('voiceCoachSessionId', sessionId);
+    }
+
+    const recordBtn = document.getElementById('recordBtn');
+    const newSessionBtn = document.getElementById('newSessionBtn');
+    const transcriptDiv = document.getElementById('transcript');
+    const modeSelect = document.getElementById('modeSelect');
+    const topicInput = document.getElementById('topicInput');
+    const statusEl = document.getElementById('status');
+
+    function addTurn(role, text) {
+      const div = document.createElement('div');
+      div.className = 'turn ' + role;
+      div.innerHTML = '<div class="label">' + (role === 'you' ? 'YOU' : 'COACH') + '</div><div>' + text + '</div>';
+      transcriptDiv.appendChild(div);
+      transcriptDiv.scrollTop = transcriptDiv.scrollHeight;
+
+      const saved = JSON.parse(localStorage.getItem('voiceCoachTranscript') || '[]');
+      saved.push({ role, text });
+      localStorage.setItem('voiceCoachTranscript', JSON.stringify(saved));
+    }
+
+    function loadSavedTranscript() {
+      const saved = JSON.parse(localStorage.getItem('voiceCoachTranscript') || '[]');
+      saved.forEach(turn => {
+        const div = document.createElement('div');
+        div.className = 'turn ' + turn.role;
+        div.innerHTML = '<div class="label">' + (turn.role === 'you' ? 'YOU' : 'COACH') + '</div><div>' + turn.text + '</div>';
+        transcriptDiv.appendChild(div);
+      });
+      transcriptDiv.scrollTop = transcriptDiv.scrollHeight;
+    }
+    loadSavedTranscript();
+
+    newSessionBtn.addEventListener('click', () => {
+      localStorage.removeItem('voiceCoachSessionId');
+      localStorage.removeItem('voiceCoachTranscript');
+      location.reload();
+    });
+
+    async function sendToCoach(transcript) {
+      addTurn('you', transcript);
+      recordBtn.disabled = true;
+      recordBtn.textContent = "Thinking...";
+      statusEl.textContent = "";
+
+      const res = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: sessionId,
+          mode: modeSelect.value,
+          topic: topicInput.value,
+          message: transcript
+        })
+      });
+      const data = await res.json();
+      addTurn('coach', data.reply);
+
+      const utterance = new SpeechSynthesisUtterance(data.reply);
+      speechSynthesis.speak(utterance);
+
+      recordBtn.disabled = false;
+      recordBtn.textContent = useWebSpeech ? "🎤 Click to talk" : "🎤 Click to record";
+    }
+
+    const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const useWebSpeech = !!SpeechRecognitionAPI;
+
+    if (useWebSpeech) {
+      statusEl.textContent = "Using built-in browser speech recognition.";
+      const recognition = new SpeechRecognitionAPI();
+      recognition.lang = 'en-US';
+      recognition.continuous = false;
+      let listening = false;
+
+      recordBtn.addEventListener('click', () => {
+        if (!listening) {
+          recognition.start();
+          listening = true;
+          recordBtn.textContent = "🔴 Listening... click to stop early";
+        } else {
+          recognition.stop();
+        }
+      });
+
+      recognition.onresult = (event) => {
+        const result = event.results[event.results.length - 1];
+        if (!result.isFinal) return;
+        sendToCoach(result[0].transcript);
+      };
+
+      recognition.onend = () => {
+        listening = false;
+        if (recordBtn.textContent.includes("Listening")) {
+          recordBtn.textContent = "🎤 Click to talk";
+        }
+      };
+
+    } else {
+      statusEl.textContent = "Built-in speech recognition not available here — using server-side transcription instead.";
+      recordBtn.textContent = "🎤 Click to record";
+
+      let mediaRecorder;
+      let audioChunks = [];
+      let recording = false;
+
+      recordBtn.addEventListener('click', async () => {
+        if (!recording) {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+          audioChunks = [];
+
+          mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+
+          mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            recordBtn.disabled = true;
+            recordBtn.textContent = "Transcribing...";
+
+            const formData = new FormData();
+            formData.append('data', audioBlob, 'recording.webm');
+
+            const res = await fetch(transcribeUrl, { method: 'POST', body: formData });
+            const data = await res.json();
+
+            recordBtn.disabled = false;
+            if (data.transcript && data.transcript.trim()) {
+              sendToCoach(data.transcript.trim());
+            } else {
+              recordBtn.textContent = "🎤 Click to record";
+              statusEl.textContent = "Didn't catch that — try again.";
+            }
+          };
+
+          mediaRecorder.start();
+          recording = true;
+          recordBtn.textContent = "🔴 Recording... click to stop";
+        } else {
+          mediaRecorder.stop();
+          recording = false;
+        }
+      });
+    }
+  </script>
+</body>
+</html>
