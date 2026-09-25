@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Voice Coach — Stats</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  body { font-family: sans-serif; max-width: 800px; margin: 40px auto; }
+  #status { color: #666; }
+</style>
+</head>
+<body>
+  <h1>Score History</h1>
+  <p id="status">Loading...</p>
+  <canvas id="scoreChart"></canvas>
+
+  <p><a href="index.html">🎤 Back to practice</a></p>
+
+  <script>
+    const statsUrl = "https://lansalot-n8n.duckdns.org/webhook/voice-agent-stats";
+
+    fetch(statsUrl)
+      .then(res => res.json())
+      .then(data => {
+        document.getElementById('status').textContent = data.length + " evaluations loaded.";
+
+        const labels = data.map(row => new Date(row.created_at).toLocaleString());
+
+        const dimensions = ['relevance', 'contextual', 'non_repetitive', 'naturalness', 'grounded_in_answer', 'useful'];
+        const colors = ['#e74c3c', '#e67e22', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6'];
+
+        const datasets = dimensions.map((dim, i) => ({
+          label: dim,
+          data: data.map(row => row[dim]),
+          borderColor: colors[i],
+          fill: false,
+          tension: 0.2
+        }));
+
+        new Chart(document.getElementById('scoreChart'), {
+          type: 'line',
+          data: { labels: labels, datasets: datasets },
+          options: {
+            scales: { y: { min: 0, max: 5 } }
+          }
+        });
+      })
+      .catch(err => {
+        document.getElementById('status').textContent = "Error: " + err.message;
+      });
+  </script>
+</body>
+</html>
